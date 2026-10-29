@@ -1,6 +1,7 @@
 import sys
 import os
 import uuid
+from time import perf_counter
 from dotenv import load_dotenv
 from openai import OpenAI
 from datetime import date as Date, datetime, timezone
@@ -95,9 +96,32 @@ def get_calendar_day(date: str) -> str:
 # Logging-Funktion
 # --------------------------------------------------
 
-def write_log(log_file: Path, event: dict) -> None:
+def write_log(
+    log_file: Path,
+    *,
+    run_id: str,
+    event: str,
+    ok: bool,
+    model: str | None,
+    duration_ms: float,
+    tool: str | None = None,
+    args: dict[str, Any] | None = None,
+    **details: Any,
+) -> None:
+    record = {
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "run_id": run_id,
+        "event": event,
+        "tool": tool,
+        "args": args,
+        "ok": ok,
+        "model": model,
+        "duration_ms": duration_ms,
+        **details,
+    }
+
     with log_file.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(event, ensure_ascii=False) + "\n")
+        f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 
 # --------------------------------------------------
@@ -178,20 +202,28 @@ def request_final_answer(
 
 def run_agent(question: str) -> str:
 
-    # Zuerst um Logging kümmern
+    # Logging 
+
     LOG_DIR.mkdir(parents=True, exist_ok=True)   # Verzeichnis für Logs erstellen, falls es noch nicht existiert
 
     run_id = str(uuid.uuid4())     # Eindeutige ID für diesen Lauf generieren
     log_file = LOG_DIR / f"run_{run_id}.jsonl"     # Log-Datei für diesen Lauf erstellen
 
-    write_log(log_file, 
-                {
-                  "event": "run_started", 
-                  "run_id": run_id, 
-                  "timestamp": datetime.now(timezone.utc).isoformat(),
-                  "question": question,
-                },
-            )
+    write_log(
+        log_file,
+        run_id=run_id,
+        event="user_task",
+        ok=True,
+        model=MODEL,
+        duration_ms=0,
+        question=question,
+    )
+
+    step = "configuration"
+    step_started = perf_counter()
+    tool_name = None
+    arguments = None
+
 
     try:
         validate_configuration()
@@ -223,21 +255,40 @@ def run_agent(question: str) -> str:
             }
         ]
 
+        # Logging
+        step = "tool_call"
+        step_started = perf_counter()
+
         assistant_message, tool_call = request_calendar_tool(client, messages)
 
+        # Logging
         arguments = json.loads(tool_call.function.arguments)
+        tool_name = tool_call.function.name
+        write_log(
+            log_file,
+            run_id=run_id,
+            event="tool_call",
+            ok=True,
+            model=MODEL,
+            duration_ms=round((perf_counter() - step_started) * 1000, 2),
+            tool=tool_name,
+            args=arguments,
+        )
+
+        step = "tool_result"
+        step_started = perf_counter()
         tool_result = get_calendar_day(**arguments)
 
-        # Logging
-        write_log(log_file,
-                {
-                    "event": "tool_executed",
-                    "run_id": run_id,
-                    "tool_name": TOOL_NAME,
-                    "arguments": arguments,
-                    "result": json.loads(tool_result),
-                },
-            )
+        write_log(
+            log_file,
+            run_id=run_id,
+            event="tool_result",
+            ok=True,
+            model=MODEL,
+            duration_ms=round((perf_counter() - step_started) * 1000, 2),
+            tool=tool_name,
+            args=arguments,
+        )
 
         # Das Modell muss im Gesprächsverlauf sehen, welchen Tool-Aufruf es angefordert hat. Die message hält fest: „Ich möchte get_calendar_day mit diesen Argumenten aufrufen.“ 
         messages.append(
@@ -266,32 +317,40 @@ def run_agent(question: str) -> str:
             }
         )
 
+        # Logging
+        step = "final"
+        step_started = perf_counter()
+
         # Der zweite Modellaufruf bekommt den Verlauf samt Kalenderdaten und formuliert daraus die Antwort.
         answer = request_final_answer(client, messages)
 
-        # Logging
-        write_log(log_file,
-                {
-                    "event": "run_completed",
-                    "run_id": run_id,
-                    "answer": answer,
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                },
-            )
+        write_log(
+            log_file,
+            run_id=run_id,
+            event="final",
+            ok=True,
+            model=MODEL,
+            duration_ms=round((perf_counter() - step_started) * 1000, 2),
+            tool=tool_name,
+            args=arguments,
+        )
 
         return answer
 
-    except Exception as e:
-        # Logging
-        write_log(log_file,
-                {
-                    "event": "run_failed",
-                    "run_id": run_id,
-                    "error_type": type(e).__name__,
-                    "error": str(e),
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                },
-            )
+    except Exception as exc:
+        write_log(
+            log_file,
+            run_id=run_id,
+            event="error",
+            ok=False,
+            model=MODEL,
+            duration_ms=round((perf_counter() - step_started) * 1000, 2),
+            tool=tool_name,
+            args=arguments,
+            step=step,
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
         raise
 
 
@@ -310,7 +369,7 @@ def main() -> int:
     # Prüfe, ob das Skript ohne Argumente aufgerufen wurde
     if len(sys.argv) < 2:         # sys.argv enthält die beim Start übergebenen Wörter
         print('Fehler: Kalenderfrage fehlt. Rufe das Programm ' \
-        'z. B. folgendermaßen auf: python main.py "Was steht im Kalender?"', 
+        'z. B. folgendermaßen auf: python main.py "Was steht heute im Kalender?"', 
         file=sys.stderr)
         return 2
 
