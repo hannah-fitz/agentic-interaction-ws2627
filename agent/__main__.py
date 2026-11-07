@@ -1,6 +1,5 @@
 import sys
 import os
-import uuid
 import json
 import requests
 
@@ -111,21 +110,24 @@ def validate_configuration() -> None:
 
 
 # --------------------------------------------------
-# 1. Modellaufruf aus run_agent(): Modell -> Tool
+# Modellaufruf: Antwort direkt oder mit Kalender-Tool
 # --------------------------------------------------
 
-def request_calendar_tool(client: OpenAI, messages: list[dict[str, Any]],) -> tuple[Any, Any]:
+def request_initial_response(
+    client: OpenAI,
+    messages: list[dict[str, Any]],
+) -> tuple[Any, Any | None]:
     response = client.chat.completions.create(
         model=MODEL,
         messages=messages,
         tools=TOOLS,
-        tool_choice="required",
+        tool_choice="auto",
     )
 
     assistant_message = response.choices[0].message
 
     if not assistant_message.tool_calls:
-        raise RuntimeError("Das Modell hat keinen Tool-Aufruf geliefert.")
+        return assistant_message, None
 
     if len(assistant_message.tool_calls) != 1:
         raise RuntimeError("Erwartet wurde genau ein Tool-Aufruf.")
@@ -193,8 +195,11 @@ def run_agent(question: str) -> str:
         messages = [
             {
                 "role": "system",
-                "content": ("Du bist ein Kalenderassistent und antwortest auf Deutsch. "
-                            "Rufe für Kalenderfragen immer das Tool get_calendar_day auf. "
+                "content": ("Du bist ein hilfreicher Chat- und Kalenderassistent und "
+                            "antwortest auf Deutsch. Beantworte normale Gesprächsfragen "
+                            "direkt und verwende dafür kein Tool. "
+                            "Rufe get_calendar_day nur für Fragen nach Kalenderterminen "
+                            "oder dem Kalenderinhalt eines bestimmten Tages auf. "
                             "Übergib das Datum im Format YYYY-MM-DD. "
                             "Wenn available=true ist, beantworte die Frage nur anhand "
                             "des Felds calendar. "
@@ -211,13 +216,28 @@ def run_agent(question: str) -> str:
             }
         ]
 
-        # Logging
-        step = "tool_call"
+        step = "model_response"
         step_started = perf_counter()
 
-        assistant_message, tool_call = request_calendar_tool(client, messages)
+        assistant_message, tool_call = request_initial_response(client, messages)
+
+        if tool_call is None:
+            answer = assistant_message.content
+            if not answer:
+                raise RuntimeError("Das Modell hat keine Antwort geliefert.")
+
+            write_log(
+                log_file,
+                run_id=run_id,
+                event="final",
+                ok=True,
+                model=MODEL,
+                duration_ms=round((perf_counter() - step_started) * 1000, 2),
+            )
+            return answer
 
         # Logging
+        step = "tool_call"
         arguments = json.loads(tool_call.function.arguments)
         tool_name = tool_call.function.name
         write_log(
