@@ -1,24 +1,24 @@
 import sys
 import os
 import uuid
+import json
+import requests
+
 from time import perf_counter
 from dotenv import load_dotenv
 from openai import OpenAI
-from datetime import date as Date, datetime, timezone
-import requests
-import json
+from datetime import date as Date
 from pathlib import Path
 from typing import Any
+
+from .logger import create_run_log, write_log
 
 
 # --------------------------------------------------
 # Konfiguration
 # --------------------------------------------------
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-LOG_DIR = PROJECT_ROOT / "logs"
-
-load_dotenv(PROJECT_ROOT / ".env")
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 BASE_URL = os.getenv("OPENAI_BASE_URL")
 API_KEY = os.getenv("OPENAI_API_KEY")
@@ -93,38 +93,6 @@ def get_calendar_day(date: str) -> str:
 
 
 # --------------------------------------------------
-# Logging-Funktion
-# --------------------------------------------------
-
-def write_log(
-    log_file: Path,
-    *,
-    run_id: str,
-    event: str,
-    ok: bool,
-    model: str | None,
-    duration_ms: float,
-    tool: str | None = None,
-    args: dict[str, Any] | None = None,
-    **details: Any,
-) -> None:
-    record = {
-        "ts": datetime.now(timezone.utc).isoformat(),
-        "run_id": run_id,
-        "event": event,
-        "tool": tool,
-        "args": args,
-        "ok": ok,
-        "model": model,
-        "duration_ms": duration_ms,
-        **details,
-    }
-
-    with log_file.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(record, ensure_ascii=False) + "\n")
-
-
-# --------------------------------------------------
 # Konfig auf Vollständigkeit für run_agent() prüfen
 # --------------------------------------------------
 
@@ -146,10 +114,7 @@ def validate_configuration() -> None:
 # 1. Modellaufruf aus run_agent(): Modell -> Tool
 # --------------------------------------------------
 
-def request_calendar_tool(
-    client: OpenAI,
-    messages: list[dict[str, Any]],
-) -> tuple[Any, Any]:
+def request_calendar_tool(client: OpenAI, messages: list[dict[str, Any]],) -> tuple[Any, Any]:
     response = client.chat.completions.create(
         model=MODEL,
         messages=messages,
@@ -178,10 +143,7 @@ def request_calendar_tool(
 # 2. Modellaufruf aus run_agent(): Modell -> Antwort
 # --------------------------------------------------
 
-def request_final_answer(
-    client: OpenAI,
-    messages: list[dict[str, Any]],
-) -> str:
+def request_final_answer(client: OpenAI, messages: list[dict[str, Any]],) -> str:
     response = client.chat.completions.create(
         model=MODEL,
         messages=messages,
@@ -203,12 +165,7 @@ def request_final_answer(
 def run_agent(question: str) -> str:
 
     # Logging 
-
-    LOG_DIR.mkdir(parents=True, exist_ok=True)   # Verzeichnis für Logs erstellen, falls es noch nicht existiert
-
-    run_id = str(uuid.uuid4())     # Eindeutige ID für diesen Lauf generieren
-    log_file = LOG_DIR / f"run_{run_id}.jsonl"     # Log-Datei für diesen Lauf erstellen
-
+    run_id, log_file = create_run_log() 
     write_log(
         log_file,
         run_id=run_id,
@@ -218,7 +175,6 @@ def run_agent(question: str) -> str:
         duration_ms=0,
         question=question,
     )
-
     step = "configuration"
     step_started = perf_counter()
     tool_name = None
@@ -380,6 +336,7 @@ def main() -> int:
         answer = run_agent(question)
         print(answer)
         return 0
+    
     except Exception as e:
         print(f"Fehler: {e}", file=sys.stderr)
         return 1
