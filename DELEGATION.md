@@ -1,4 +1,4 @@
-# Delegation Policy
+# Delegation: assignment 2
 
 ## 1. Action Classification
 
@@ -18,7 +18,7 @@
 
 ## 2. Delegation Rule
 
-The agent may perform actions alone if they only involve reading information that is public or access was granted to or if changes are reversible, while actions that affect other people, involve financial commitments, or permanently modify or delete information (create, update and delete operations) require the user's approval. 
+The agent may perform actions alone if they only involve reading information that is public or access was granted to or if changes are reversible, while actions that affect other people, involve financial commitments, or permanently modify or delete information require the user's approval. 
 
 
 ## 3. Observations from the Role Play
@@ -27,7 +27,7 @@ The agent may perform actions alone if they only involve reading information tha
 
 2. Actions that affect other people need special attention. For example, sending a message to colleagues or rescheduling a meeting should not happen without the user's approval.
 
-3. Reversibility matters. Creating a personal calendar block is easy to undo, whereas deleting notes could result in losing important information.
+3. Reversibility matters. Creating a personal note is easy to undo, whereas deleting notes could result in losing important information.
 
 4. Communicate sources for statements and recommendations clearly. In case the agent jumps to wrong conclusions, communicating what made it think this way will prevent mistakes as the user has a chance to notice misinterpretation.
 
