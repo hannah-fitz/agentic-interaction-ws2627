@@ -7,6 +7,24 @@ A Python agent that answers questions about a mock calendar using an OpenAI-comp
 - Python 3.11 or newer
 - An API key for the configured model provider
 
+## Project Structure
+
+```text
+agentic-interaction-ws2627/
+├── agent/
+│   ├── __init__.py
+│   ├── __main__.py
+│   ├── calendar_tool.py
+│   ├── config.py
+│   ├── logger.py
+│   └── runner.py
+├── logs/
+├── .env
+├── .gitignore
+├── README.md
+└── requirements.txt
+```
+
 ## Setup
 
 Clone the repository and enter the project directory.
@@ -60,27 +78,16 @@ Ask a question about a calendar day:
 python -m agent "Was steht am 29.10.2026 im Kalender?"
 ```
 
-The agent asks the model to call the calendar tool, retrieves the calendar data for the requested day, and sends the tool result back
-to the model to generate an answer.
+The agent can call a calendar tool, also in a loop if neccassary. It returns each result to the model and repeats until the model provides a final answer. A failed calendar call is reported to the model so it can continue or explain the problem.
 
 The answer is printed to standard output.
+
+Each run is limited to 8 calendar tool calls. Reaching that limit ends the run as an error: the command exits with status `1` and the run log records an `error` event. A successful answer exits with status `0` and is recorded as a `final` event.
 
 ## Logging
 
 Each agent run creates a JSONL log file in the `logs/` directory.
+The final event identifies whether the run completed successfully or ended with an error.
 
 Log files are excluded from version control.
 
-## Project Structure
-
-```text
-agentic-interaction-ws2627/
-├── agent/
-│   ├── __init__.py
-│   └── __main__.py
-├── logs/
-├── .env
-├── .gitignore
-├── README.md
-└── requirements.txt
-```
