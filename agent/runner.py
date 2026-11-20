@@ -5,12 +5,16 @@ from typing import Any
 
 from openai import OpenAI
 
-from .calendar_tool import TOOL_NAME, TOOLS, get_calendar_day
+from .tools.calendar_tool import CALENDAR_TOOL_NAME, CALENDAR_TOOL, get_calendar_day
+from .tools.weather_tool import WEATHER_TOOL_NAME, WEATHER_TOOL, get_weather_for_city_and_day
+from .tools.connections_tool import CONNECTIONS_TOOL_NAME, CONNECTIONS_TOOL, get_connections
+
 from .config import API_KEY, BASE_URL, MODEL, validate_configuration
 from .logger import create_run_log, write_log
 
 
 MAX_TOOL_CALLS = 8
+TOOLS = [CALENDAR_TOOL, WEATHER_TOOL, CONNECTIONS_TOOL]
 
 
 # -----------------------------------------------------
@@ -92,12 +96,15 @@ def execute_tool_call(tool_call: Any, log_file: Path, run_id: str) -> str:
     step_started = perf_counter()
     try:
 
-        # Fehler bei Aufruf eines unbekannten Tools abfangen
-        if tool_name != TOOL_NAME:
+        # Entsprechend des Tool-Namens das passende Tool ausführen
+        if tool_name == CALENDAR_TOOL_NAME:
+            tool_result = get_calendar_day(**arguments)
+        elif tool_name == WEATHER_TOOL_NAME:
+            tool_result = get_weather_for_city_and_day(**arguments)
+        elif tool_name == CONNECTIONS_TOOL_NAME:
+            tool_result = get_connections(**arguments)
+        else:
             raise RuntimeError("Unbekanntes Tool angefordert.")
-
-        # Tool-Aufruf ausführen
-        tool_result = get_calendar_day(**arguments)
 
     # Exception beim Tool-Aufruf abfangen
     except Exception as exc:
@@ -173,19 +180,30 @@ def run_agent(question: str) -> str:
                     "direkt und verwende dafür kein Tool. "
                     "Rufe get_calendar_day nur für Fragen nach Kalenderterminen "
                     "oder dem Kalenderinhalt eines bestimmten Tages auf. "
-                    "Rufe das Tool für jeden angefragten Tag auf; mehrere "
-                    "Tool-Aufrufe in einer Antwort sind erlaubt. "
+                    "Rufe get_weather_for_city_and_day für Fragen nach Wetterdaten "
+                    "für eine bestimmte Stadt und einen bestimmten Tag auf. "
+                    "Rufe die passenden Tools für jeden angefragten Datensatz auf; "
+                    "mehrere Tool-Aufrufe in einer Antwort sind erlaubt. "
                     "Übergib das Datum im Format YYYY-MM-DD. "
-                    "Wenn available=true ist, beantworte die Frage nur anhand "
-                    "des Felds calendar. "
-                    "Wenn das Tool available=false zurückgibt, sage höflich, dass "
-                    "für dieses Datum keine Kalenderdaten abgerufen werden konnten. "
-                    "Behaupte nicht, dass der Tag terminfrei ist. "
+                    "Für Kalenderdaten beantworte die Frage nur anhand des Felds "
+                    "calendar, wenn available=true ist. "
+                    "Für Wetterdaten beantworte die Frage nur anhand der "
+                    "zurückgegebenen Wetter-Informationen. "
+                    "Rufe get_connections für Fragen nach Zugverbindungen auf, "
+                    "wenn Abfahrtsort, Zielort und Datum bekannt sind. "
+                    "Wenn die Information zum Abfahrtsbahnhof fehlt, gehe davon aus, dass "
+                    "jemand von Ulm aus starten möchte. Betrachte Ulm also als den Heimatbahnhof,"
+                    "wenn es nötig ist."
+                    "Wenn die Reiseart nicht spezifiziert ist, gehe davon aus, dass "
+                    "jemand mit dem Zug fahren möchte und nutze das Connections-Tool. "
+                    "Wenn ein Tool available=false zurückgibt, behaupte nicht, dass "
+                    "die Daten vorhanden sind oder der Tag frei ist. Sage höflich, "
+                    "dass die angefragten Daten nicht abgerufen werden konnten. "
                     "Wenn ein Tool-Ergebnis ein error-Feld enthält, behaupte "
-                    "keine Kalenderdaten; erkläre den Fehler oder versuche es "
+                    "keine Daten aus dem Tool-Ergebnis; erkläre den Fehler oder versuche es "
                     "erneut, sofern noch Schritte verfügbar sind. "
-                    "Beantworte die Frage erst nach Erhalt der Kalenderdaten "
-                    "und erfinde keine Termine."
+                    "Beantworte Fragen zu Kalender, Wetter oder Verbindungen erst "
+                    "anhand der zurückgegebenen Tool-Daten und erfinde keine Angaben."
                 ),
             },
             {"role": "user", "content": question},

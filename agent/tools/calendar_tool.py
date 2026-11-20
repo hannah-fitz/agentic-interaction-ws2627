@@ -3,20 +3,22 @@ from datetime import date as Date
 
 import requests
 
-from .config import DATA_BASE_URL
+from agent.util import formatDate
+
+from ..config import DATA_BASE_URL
 
 
 # -----------------------------------------------------
 # Tool-Definition
 # -----------------------------------------------------
 
-TOOL_NAME = "get_calendar_day"
+CALENDAR_TOOL_NAME = "get_calendar_day"
 
-TOOLS = [
-    {
+# Python-Liste, in der die Beschreibung des Tools für das Modell steht: Name, Zweck und erwartete Parameter.
+CALENDAR_TOOL = {
         "type": "function",
         "function": {
-            "name": TOOL_NAME,
+            "name": CALENDAR_TOOL_NAME,
             "description": "Lädt die Kalendertermine für einen bestimmten Tag. Verwende dieses Tool, um Fragen zum Kalender zu beantworten.",
             "parameters": {
                 "type": "object",
@@ -32,7 +34,7 @@ TOOLS = [
             "strict": True,
         },
     }
-]
+
 
 
 # -----------------------------------------------------
@@ -41,12 +43,7 @@ TOOLS = [
 
 def get_calendar_day(date: str) -> str:
 
-    # Formatierung
-    parsed_date = Date.fromisoformat(date)
-
-    if parsed_date.isoformat() != date:
-        raise ValueError("Das Datum muss YYYY-MM-DD entsprechen.")
-
+    parsed_date = formatDate(date)
 
     # Abrufen der Kalendertermine von der API
     url = f"{DATA_BASE_URL.rstrip('/')}/calendar/{parsed_date}.json"

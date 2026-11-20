@@ -10,7 +10,8 @@ LOG_DIR = Path(__file__).resolve().parent.parent / "logs"
 def create_run_log() -> tuple[str, Path]:
     LOG_DIR.mkdir(parents=True, exist_ok=True)   # Verzeichnis für Logs erstellen, falls es noch nicht existiert
     run_id = str(uuid.uuid4())   # Eindeutige ID für diesen Lauf generieren
-    return run_id, LOG_DIR / f"run_{run_id}.jsonl"   # Log-Datei für diesen Lauf erstellen
+    time = datetime.now(timezone.utc).strftime('%m-%dT%H-%M')
+    return run_id, LOG_DIR / f"run_{time}_{run_id}.jsonl"   # Log-Datei für diesen Lauf erstellen
 
 
 
